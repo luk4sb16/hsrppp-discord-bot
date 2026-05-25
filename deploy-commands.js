@@ -199,6 +199,33 @@ const commands = [
       },
     ],
   },
+  // Tickets
+  {
+    name: 'ticket',
+    description: 'Create a private support ticket',
+    options: [
+      {
+        name: 'type',
+        description: 'The type of support ticket to create',
+        type: 3,
+        required: true,
+        choices: [
+          {
+            name: 'General support',
+            value: 'general',
+          },
+          {
+            name: 'Managment support',
+            value: 'management',
+          },
+          {
+            name: 'Ownership support',
+            value: 'ownership',
+          },
+        ],
+      },
+    ],
+  },
   // Server
   {
     name: 'startup',

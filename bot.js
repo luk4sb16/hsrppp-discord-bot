@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, ActivityType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } = require('discord.js');
 const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
@@ -71,6 +71,39 @@ function hasRole(member, selectors) {
     const maxPos = Math.max(startRole.position, endRole.position);
     return roleCache.some((role) => role.position >= minPos && role.position <= maxPos);
   });
+}
+
+function getRolesForSelectors(guild, selectors) {
+  const roles = new Map();
+  const guildRoles = guild.roles.cache;
+
+  for (const selector of selectors) {
+    if (selector.type === 'id') {
+      const role = guildRoles.get(selector.id);
+      if (role) roles.set(role.id, role);
+      continue;
+    }
+
+    const startRole = guildRoles.get(selector.start);
+    const endRole = guildRoles.get(selector.end);
+    if (!startRole || !endRole) continue;
+
+    const minPos = Math.min(startRole.position, endRole.position);
+    const maxPos = Math.max(startRole.position, endRole.position);
+    guildRoles
+      .filter((role) => role.position >= minPos && role.position <= maxPos)
+      .forEach((role) => roles.set(role.id, role));
+  }
+
+  return [...roles.values()];
+}
+
+function getTicketStaffRoles(guild) {
+  return [
+    ...getRolesForSelectors(guild, parseRoleSelectors(process.env.ADMIN_ROLE_ID)),
+    ...getRolesForSelectors(guild, parseRoleSelectors(process.env.MODERATOR_ROLE_ID)),
+    ...getRolesForSelectors(guild, parseRoleSelectors(process.env.SERVER_ADMIN_ROLE_ID)),
+  ].filter((role, index, roles) => roles.findIndex((item) => item.id === role.id) === index);
 }
 
 function hasAdminRole(member) {
@@ -172,6 +205,103 @@ function createErlcStatusControls() {
       .setStyle(ButtonStyle.Link)
       .setURL('https://discord.gg/uyMvmY4gH3')
   );
+}
+
+function slugifyChannelPart(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40) || 'user';
+}
+
+function getTicketTypeLabel(value) {
+  const labels = {
+    general: 'General support',
+    management: 'Managment support',
+    ownership: 'Ownership support',
+  };
+  return labels[value] || labels.general;
+}
+
+async function findOrCreateTicketCategory(guild, ticketTypeLabel, permissionOverwrites) {
+  const category = guild.channels.cache.find((channel) => (
+    channel.type === ChannelType.GuildCategory && channel.name.toLowerCase() === ticketTypeLabel.toLowerCase()
+  ));
+
+  if (category) return category;
+
+  return guild.channels.create({
+    name: ticketTypeLabel,
+    type: ChannelType.GuildCategory,
+    permissionOverwrites,
+    reason: `Ticket category created for ${ticketTypeLabel}`,
+  });
+}
+
+async function createTicketChannel(interaction, ticketType) {
+  const { guild, user } = interaction;
+  const ticketTypeLabel = getTicketTypeLabel(ticketType);
+  const staffRoles = getTicketStaffRoles(guild);
+  const channelName = `${slugifyChannelPart(ticketTypeLabel)}_${slugifyChannelPart(user.username)}`.slice(0, 100);
+
+  const permissionOverwrites = [
+    {
+      id: guild.roles.everyone.id,
+      deny: [PermissionFlagsBits.ViewChannel],
+    },
+    {
+      id: user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.AttachFiles,
+      ],
+    },
+    {
+      id: client.user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.ReadMessageHistory,
+      ],
+    },
+    ...staffRoles.map((role) => ({
+      id: role.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageMessages,
+      ],
+    })),
+  ];
+
+  const category = await findOrCreateTicketCategory(guild, ticketTypeLabel, permissionOverwrites);
+  const channel = await guild.channels.create({
+    name: channelName,
+    type: ChannelType.GuildText,
+    parent: category.id,
+    permissionOverwrites,
+    topic: `${ticketTypeLabel} ticket for ${user.tag} (${user.id})`,
+    reason: `Ticket created by ${user.tag}`,
+  });
+
+  const embed = createEmbed(
+    ticketTypeLabel,
+    `Ticket created by ${user}.\n\nStaff will help you here as soon as possible.`,
+    0x55a7ff
+  );
+
+  await channel.send({
+    content: `${user}${staffRoles.length ? ` ${staffRoles.map((role) => role.toString()).join(' ')}` : ''}`,
+    embeds: [embed],
+    allowedMentions: { users: [user.id], roles: staffRoles.map((role) => role.id) },
+  });
+
+  return channel;
 }
 
 async function sendNextErlcAnnouncement() {
@@ -1139,6 +1269,16 @@ async function handleInteraction(interaction) {
       await logModeration(guild, 'DEMOTE', targetUser, user, `Removed ${role.name}: ${reason}`);
     }
 
+    // ==================== TICKET COMMANDS ====================
+
+    else if (commandName === 'ticket') {
+      const ticketType = interaction.options.getString('type', true);
+      await interaction.deferReply({ ephemeral: true });
+
+      const channel = await createTicketChannel(interaction, ticketType);
+      await interaction.editReply({ content: `Your ticket has been created: ${channel}` });
+    }
+
     // ==================== SERVER COMMANDS ====================
 
     else if (commandName === 'serverstatus') {
@@ -1275,7 +1415,7 @@ async function handleInteraction(interaction) {
           },
           {
             name: '🖥️ Server Commands',
-            value: '`/erlc-status` - Test ERLC API link\n`/erlc-command` - Run an ERLC command\n`/vote` - Start a session vote with required yes votes\n`/startup` - Start the server\n`/shutdown` - Shutdown the server\n`/serverstatus` - Check server status'
+            value: '`/ticket` - Create a private support ticket\n`/erlc-status` - Test ERLC API link\n`/erlc-command` - Run an ERLC command\n`/vote` - Start a session vote with required yes votes\n`/startup` - Start the server\n`/shutdown` - Shutdown the server\n`/serverstatus` - Check server status'
           },
           {
             name: '📋 Info',
