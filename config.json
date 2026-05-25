@@ -1,0 +1,43 @@
+{
+  "botName": "Houston City Roleplay Bot",
+  "version": "1.0.0",
+  "description": "Discord moderation bot with promotions and server control for Houston City Roleplay",
+  "features": {
+    "moderation": [
+      "Warning system with auto-kick",
+      "Kick command",
+      "Ban command",
+      "Mute/Timeout system",
+      "Moderation logs"
+    ],
+    "promotions": [
+      "Promote users (add roles)",
+      "Demote users (remove roles)",
+      "Role management"
+    ],
+    "server": [
+      "Server startup command",
+      "Server shutdown command",
+      "Server status check"
+    ]
+  },
+  "permissions": {
+    "admin_role": "Users with this role can use all moderation commands",
+    "moderator_role": "Users with this role can use moderation commands",
+    "server_admin_role": "Users with this role can start/stop servers",
+    "required": [
+      "Send Messages",
+      "Embed Links",
+      "Manage Messages",
+      "Timeout Members",
+      "Kick Members",
+      "Ban Members",
+      "Manage Nicknames",
+      "Manage Roles"
+    ]
+  },
+  "limits": {
+    "max_warnings_auto_kick": 3,
+    "default_mute_duration_minutes": 15
+  }
+}

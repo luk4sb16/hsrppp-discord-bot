@@ -1,0 +1,24 @@
+{
+  "name": "erlc-moderation-bot",
+  "version": "1.0.0",
+  "description": "Houston City Roleplay moderation Discord bot with promotions",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js",
+    "check": "node --check bot.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["discord", "bot", "moderation", "erlc", "roblox"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
